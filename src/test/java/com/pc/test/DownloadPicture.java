@@ -33,7 +33,7 @@ public class DownloadPicture {
                     originalImageURL = WEBSITE_17_CAI + originalImageURL;
                 }
                 // System.out.println("Product Id：" + productId + " Image URL：" + originalImageURL);
-                String dirPath = DIR_PATH_F + productId + "/";
+                String dirPath = DIR_PATH + productId + "/";
                 String fileName = originalImageURL.substring(originalImageURL.lastIndexOf("/") + 1);
                 System.out.println("Dir Path：" + dirPath + " FileName：" + fileName);
                 new HttpClientUtils().downloadPicture(originalImageURL, dirPath, fileName);
