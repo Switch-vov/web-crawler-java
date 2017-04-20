@@ -12,12 +12,11 @@ import org.apache.http.impl.client.HttpClients;
 import org.apache.http.message.BasicNameValuePair;
 import org.apache.http.util.EntityUtils;
 
-import java.io.File;
-import java.io.FileOutputStream;
-import java.io.IOException;
-import java.io.InputStream;
+import java.io.*;
+import java.net.URI;
 import java.net.URISyntaxException;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -44,33 +43,52 @@ public class HttpClientUtils {
      */
     public HttpResult doGet(String url, Map<String, Object> params) {
         try {
-            CloseableHttpResponse response = getResponseByGetRequest(url, params);
-
-            // 解析返回结果，封装返回对象httpResult
-            // 获取状态码
-            int code = response.getStatusLine().getStatusCode();
-
-            // 获取响应体
-            // 使用EntityUtils.toString方法必须保证entity不为空
-            String body = null;
-            if (response.getEntity() != null) {
-                body = EntityUtils.toString(response.getEntity(), "UTF-8");
-            }
-            return new HttpResult(code, body);
+            URI urlObject = createURLObject(url, params);
+            HttpGet httpGet = createHttpGet(urlObject);
+            return getHttpResultByRequest(httpGet);
         } catch (Exception e) {
             e.printStackTrace();
         }
         return null;
     }
 
-    public CloseableHttpResponse getResponseByGetRequest(String url) throws URISyntaxException, IOException {
-        return this.getResponseByGetRequest(url, null);
+    private HttpGet createHttpGet(URI urlObject) {
+        // 创建请求对象httpGet
+        HttpGet httpGet = new HttpGet(urlObject);
+        Map<String, String> heads = new HashMap<>();
+        httpGet = setHeader(httpGet, heads);
+        return httpGet;
     }
 
-    public CloseableHttpResponse getResponseByGetRequest(String url, Map<String, Object> params) throws URISyntaxException, IOException {
+    private HttpGet setHeader(HttpGet httpGet, Map<String, String> heads) {
+        setDefaultHeader(heads);
+        for (Map.Entry<String, String> entry : heads.entrySet()) {
+            httpGet.setHeader(entry.getKey(), entry.getValue());
+        }
+        return httpGet;
+    }
+
+    private void setDefaultHeader(Map<String, String> heads) {
+        if (!heads.containsKey("User-Agent")) {
+            heads.put("User-Agent", "Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.1 (KHTML, like Gecko) Chrome/21.0.1180.79 Safari/537.1");
+        }
+        if (!heads.containsKey("Accept")) {
+            heads.put("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8");
+        }
+    }
+
+    private URI createURLObject(String url, Map<String, Object> params) throws URISyntaxException {
         // 创建URIBuilder
         URIBuilder uriBuilder = new URIBuilder(url);
+        setRequestParams(params, uriBuilder);
+        return uriBuilder.build();
+    }
 
+    private URI createURLObject(String url) throws URISyntaxException {
+        return this.createURLObject(url, null);
+    }
+
+    private void setRequestParams(Map<String, Object> params, URIBuilder uriBuilder) {
         // 设置请求参数
         if (params != null && params.size() > 0) {
             // 遍历请求参数
@@ -79,16 +97,6 @@ public class HttpClientUtils {
                 uriBuilder.setParameter(entry.getKey(), entry.getValue().toString());
             }
         }
-
-        // 创建请求对象httpGet
-        HttpGet httpGet = new HttpGet(uriBuilder.build());
-        httpGet.setHeader(
-                "User-Agent",
-                "Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.1 (KHTML, like Gecko) Chrome/21.0.1180.79 Safari/537.1");
-        httpGet.setHeader("Accept",
-                "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8");
-        // 使用httpClient发起请求
-        return this.httpClient.execute(httpGet);
     }
 
     /**
@@ -112,41 +120,29 @@ public class HttpClientUtils {
         try {
             // 创建请求对象httpPut
             HttpPost httpPost = new HttpPost(url);
-
-            // 封装请求参数，请求数据是表单
-            if (params != null && params.size() > 0) {
-                // 声明封装表单数据的容器
-                List<NameValuePair> pairs = new ArrayList<>();
-                for (Map.Entry<String, Object> entry : params.entrySet()) {
-                    // 封装请求参数到容器中
-                    pairs.add(new BasicNameValuePair(entry.getKey(), entry.getValue().toString()));
-                }
-                // 创建表单的Entity类
-                UrlEncodedFormEntity entity = new UrlEncodedFormEntity(pairs);
-
-                // 把封装好的表单实体对象设置到httpPut中
-                httpPost.setEntity(entity);
-            }
-
-            // 使用Httpclient发起请求
-            CloseableHttpResponse response = httpClient.execute(httpPost);
-
-            // 解析返回结果，封装返回对象httpResult
-            // 获取状态码
-            int code = response.getStatusLine().getStatusCode();
-
-            // 获取响应体
-            // 使用EntityUtils.toString方法必须保证entity不为空
-            String body = null;
-            if (response.getEntity() != null) {
-                body = EntityUtils.toString(response.getEntity(), "UTF-8");
-            }
-            return new HttpResult(code, body);
-
+            httpPost = (HttpPost) setEntity(params, httpPost);
+            return getHttpResultByRequest(httpPost);
         } catch (Exception e) {
             e.printStackTrace();
         }
         return null;
+    }
+
+    private HttpResult getHttpResultByRequest(HttpUriRequest request) throws IOException {
+        // 使用Httpclient发起请求
+        CloseableHttpResponse response = httpClient.execute(request);
+
+        // 解析返回结果，封装返回对象httpResult
+        // 获取状态码
+        int code = response.getStatusLine().getStatusCode();
+
+        // 获取响应体
+        // 使用EntityUtils.toString方法必须保证entity不为空
+        String body = null;
+        if (response.getEntity() != null) {
+            body = EntityUtils.toString(response.getEntity(), "UTF-8");
+        }
+        return new HttpResult(code, body);
     }
 
     /**
@@ -170,41 +166,38 @@ public class HttpClientUtils {
         try {
             // 创建请求对象httpPost
             HttpPut httpPut = new HttpPut(url);
-
-            // 封装请求参数，请求数据是表单
-            if (params != null && params.size() > 0) {
-                // 声明封装表单数据的容器
-                List<NameValuePair> pairs = new ArrayList<>();
-                for (Map.Entry<String, Object> entry : params.entrySet()) {
-                    // 封装请求参数到容器中
-                    pairs.add(new BasicNameValuePair(entry.getKey(), entry.getValue().toString()));
-                }
-                // 创建表单的Entity类
-                UrlEncodedFormEntity entity = new UrlEncodedFormEntity(pairs);
-
-                // 把封装好的表单实体对象设置到HttpPost中
-                httpPut.setEntity(entity);
-            }
-
-            // 使用Httpclient发起请求
-            CloseableHttpResponse response = httpClient.execute(httpPut);
-
-            // 解析返回结果，封装返回对象httpResult
-            // 获取状态码
-            int code = response.getStatusLine().getStatusCode();
-
-            // 获取响应体
-            // 使用EntityUtils.toString方法必须保证entity不为空
-            String body = null;
-            if (response.getEntity() != null) {
-                body = EntityUtils.toString(response.getEntity(), "UTF-8");
-            }
-            return new HttpResult(code, body);
-
+            httpPut = (HttpPut) setEntity(params, httpPut);
+            return getHttpResultByRequest(httpPut);
         } catch (Exception e) {
             e.printStackTrace();
         }
         return null;
+    }
+
+    private HttpEntityEnclosingRequestBase setEntity(Map<String, Object> params, HttpEntityEnclosingRequestBase request) throws UnsupportedEncodingException {
+        UrlEncodedFormEntity entity = null;
+        entity = createUrlEncodedFormEntity(params, entity);
+        // 把封装好的表单实体对象设置到HttpPut中
+        if (entity != null) {
+            request.setEntity(entity);
+        }
+        return request;
+    }
+
+    private UrlEncodedFormEntity createUrlEncodedFormEntity(Map<String, Object> params, UrlEncodedFormEntity entity) throws UnsupportedEncodingException {
+        // 封装请求参数，请求数据是表单
+        if (params != null && params.size() > 0) {
+            // 声明封装表单数据的容器
+            List<NameValuePair> pairs = new ArrayList<>();
+            for (Map.Entry<String, Object> entry : params.entrySet()) {
+                // 封装请求参数到容器中
+                pairs.add(new BasicNameValuePair(entry.getKey(), entry.getValue().toString()));
+            }
+            // 创建表单的Entity类
+            entity = new UrlEncodedFormEntity(pairs);
+
+        }
+        return entity;
     }
 
     /**
@@ -216,35 +209,9 @@ public class HttpClientUtils {
      */
     public HttpResult doDelete(String url, Map<String, Object> params) {
         try {
-            // 创建URIBuilder
-            URIBuilder uriBuilder = new URIBuilder(url);
-
-            // 设置请求参数
-            if (params != null && params.size() > 0) {
-                // 遍历请求参数
-                for (Map.Entry<String, Object> entry : params.entrySet()) {
-                    // 封装请求参数
-                    uriBuilder.setParameter(entry.getKey(), entry.getValue().toString());
-                }
-            }
-
-            // 创建请求对象httpDelete
-            HttpDelete httpDelete = new HttpDelete(uriBuilder.build());
-
-            // 使用httpClient发起请求
-            CloseableHttpResponse response = this.httpClient.execute(httpDelete);
-
-            // 解析返回结果，封装返回对象httpResult
-            // 获取状态码
-            int code = response.getStatusLine().getStatusCode();
-
-            // 获取响应体
-            // 使用EntityUtils.toString方法必须保证entity不为空
-            String body = null;
-            if (response.getEntity() != null) {
-                body = EntityUtils.toString(response.getEntity(), "UTF-8");
-            }
-            return new HttpResult(code, body);
+            URI urlObject = createURLObject(url, params);
+            HttpDelete httpDelete = new HttpDelete(urlObject);
+            return getHttpResultByRequest(httpDelete);
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -256,7 +223,9 @@ public class HttpClientUtils {
      */
     public void downloadPicture(String url, String dirPath, String fileName) {
         try {
-            CloseableHttpResponse response = this.getResponseByGetRequest(url);
+            URI urlObject = createURLObject(url);
+            HttpGet httpGet = createHttpGet(urlObject);
+            CloseableHttpResponse response = httpClient.execute(httpGet);
             if (HttpStatus.SC_OK == response.getStatusLine().getStatusCode()) {
                 HttpEntity entity = response.getEntity();
 
